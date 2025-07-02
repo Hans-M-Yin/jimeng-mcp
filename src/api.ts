@@ -263,8 +263,8 @@ class JimengApiClient {
             "large_image_info": {
               "type": "",
               "id": generateUuid(),
-              "height": 1360,
-              "width": 1360,
+              "height": params?.height,
+              "width": params?.width,
               "resolution_type": '1k'
             }
           },
