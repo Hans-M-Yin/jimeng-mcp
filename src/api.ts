@@ -486,24 +486,26 @@ class JimengApiClient {
     });
   }
 
-  public async getFileContent(filePath: string): Promise<Buffer> {
-    try {
-      if (filePath.includes('https://') || filePath.includes('http://')) {
-        // 直接用axios获取图片Buffer
-        const res = await axios.get(filePath, { responseType: 'arraybuffer' });
-        return Buffer.from(res.data);
-      } else {
-        // 确保路径是绝对路径
-        const absolutePath = path.resolve(filePath);
-        // 读取文件内容
-        return await fs.promises.readFile(absolutePath);
-      }
-    } catch (error) {
-      console.error('Failed to read file:', error);
-      throw new Error(`读取文件失败: filePath`);
+public async getFileContent(filePath: string): Promise<Buffer> {
+  try {
+    // 新增：识别 Base64 数据
+    if (filePath.startsWith('data:')) {
+      const base64Data = filePath.split(',')[1]; // 移除 "data:image/...;base64," 前缀
+      return Buffer.from(base64Data, 'base64');
     }
+    // 原有逻辑：处理 URL 或本地路径
+    if (filePath.includes('https://') || filePath.includes('http://')) {
+      const res = await axios.get(filePath, { responseType: 'arraybuffer' });
+      return Buffer.from(res.data);
+    } else {
+      const absolutePath = path.resolve(filePath);
+      return await fs.promises.readFile(absolutePath);
+    }
+  } catch (error) {
+    console.error('Failed to read file:', error);
+    throw new Error(`读取文件失败: ${filePath}`); // 修复：显示实际路径
   }
-
+}
   private generateRandomString(length: number): string {
     let result = '';
     const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
