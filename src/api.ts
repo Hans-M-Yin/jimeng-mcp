@@ -437,7 +437,7 @@ class JimengApiClient {
 
       const record = result?.data?.[historyId];
       if (!record) {
-        throw new Error('记录不存在 ${JSON.stringify(result?.data)}');
+          throw new Error(`记录不存在 ${JSON.stringify(result?.data)}`);
       }
 
       status = record.status;
