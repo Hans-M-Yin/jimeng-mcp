@@ -1,5 +1,5 @@
 # Jimeng MCP 服务器
-
+注意！！！这个repo是clone的 https://github.com/c-rick/jimeng-mcp 这个项目。在原来项目的基础之上修改支持了图生图的即梦3.0模型，并且修改了关于生图大小的设置。因为本人有一些特殊使用所以需要挂github，用完了立马会删除！
 
 使用TypeScript实现的Model Context Protocol (MCP) 服务器项目，集成了即梦AI图像生成服务，通过逆向工程直接调用即梦官方API。
 
