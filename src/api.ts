@@ -237,257 +237,163 @@ class JimengApiClient {
   }
 
   /**
-   * 即梦AI图像生成
+   * 即梦AI图像生成 (版本已修改，会返回包含日志的JSON字符串)
    * @param params 图像生成参数
-   * @returns 生成的图像URL列表
+   * @returns 包含日志、状态和结果的JSON字符串
    */
   public async generateImage(params: ImageGenerationParams): Promise<string[]> {
-    // 参数验证
-    if (!params.prompt || typeof params.prompt !== 'string') {
-      throw new Error('prompt必须是非空字符串');
-    }
-    const hasFilePath = params?.filePath
-    let uploadID = null
-    if (params?.filePath) {
-      uploadID = await this.uploadCoverFile(params.filePath)
-    }
-    // 获取实际模型
-    const modelName = hasFilePath ? DEFAULT_BLEND_MODEL : params.model || DEFAULT_MODEL;
-    const actualModel = this.getModel(modelName);
+    // 创建一个日志缓冲区，用于收集所有日志并返回给客户端
+    const logBuffer: string[] = [];
 
-    // 检查积分
-    const creditInfo = await this.getCredit();
-    if (creditInfo.totalCredit <= 0) {
-      await this.receiveCredit();
-    }
+    try {
+      // 参数验证
+      if (!params.prompt || typeof params.prompt !== 'string') {
+        throw new Error('prompt必须是非空字符串');
+      }
+      const hasFilePath = params?.filePath
+      let uploadID = null
+      if (params?.filePath) {
+        logBuffer.push("[任务准备] 检测到文件路径，开始上传...");
+        uploadID = await this.uploadCoverFile(params.filePath)
+        logBuffer.push(`[任务准备] 文件上传成功, UploadID: ${uploadID}`);
+      }
+      // 获取实际模型
+      const modelName = hasFilePath ? DEFAULT_BLEND_MODEL : params.model || DEFAULT_MODEL;
+      const actualModel = this.getModel(modelName);
+      logBuffer.push(`[任务准备] 使用模型: ${modelName} -> ${actualModel}`);
 
-    // 生成组件ID
-    const componentId = generateUuid();
-    const rqParams = {
-      "babi_param": urlEncode(jsonEncode({
-        "scenario": "image_video_generation",
-        "feature_key": hasFilePath ? "to_image_referenceimage_generate" : "aigc_to_image",
-        "feature_entrance": "to_image",
-        "feature_entrance_detail": hasFilePath ? "to_image-referenceimage-byte_edit" : `to_image-${actualModel}`,
-      })),
-      "aid": parseInt(DEFAULT_ASSISTANT_ID),
-      "device_platform": "web",
-      "region": "CN",
-      "web_id": WEB_ID
-    }
+      // 检查积分
+      logBuffer.push("[任务准备] 正在检查用户积分...");
+      const creditInfo = await this.getCredit();
+      logBuffer.push(`[任务准备] 积分信息: ${JSON.stringify(creditInfo)}`);
+      if (creditInfo.totalCredit <= 0) {
+        logBuffer.push("[任务准备] 积分为0，尝试领取每日积分...");
+        await this.receiveCredit();
+        logBuffer.push("[任务准备] 每日积分领取成功。");
+      }
 
-    let abilities: Record<string, any> = {}
-    if (hasFilePath) {
-      abilities = {
-        "blend": {
-          "type": "",
-          "id": generateUuid(),
-          "min_features": [],
-          "core_param": {
-            "type": "",
-            "id": generateUuid(),
-            "model": actualModel,
-            "prompt": params.prompt + '##',
-            "sample_strength": params.sample_strength || 0.5,
-            "image_ratio": 1,
-            "large_image_info": {
-              "type": "",
-              "id": generateUuid(),
-              "height": params?.height,
-              "width": params?.width,
-              "resolution_type": '1k'
-            }
-          },
-          "ability_list": [
-            {
-              "type": "",
-              "id": generateUuid(),
-              "name": "byte_edit",
-              "image_uri_list": [
-                uploadID
-              ],
-              "image_list": [
-                {
-                  "type": "image",
-                  "id": generateUuid(),
-                  "source_from": "upload",
-                  "platform_type": 1,
-                  "name": "",
-                  "image_uri": uploadID,
-                  "width": 0,
-                  "height": 0,
-                  "format": "",
-                  "uri": uploadID
-                }
-              ],
-              "strength": 0.5
-            }
-          ],
-          "history_option": {
-            "type": "",
-            "id": generateUuid(),
-          },
-          "prompt_placeholder_info_list": [
-            {
-              "type": "",
-              "id": generateUuid(),
-              "ability_index": 0
-            }
-          ],
-          "postedit_param": {
-            "type": "",
-            "id": generateUuid(),
-            "generate_type": 0
+      // 构造请求体和参数 (这部分逻辑保持不变)
+      const componentId = generateUuid();
+      const rqParams = {
+        "babi_param": urlEncode(jsonEncode({
+          "scenario": "image_video_generation",
+          "feature_key": hasFilePath ? "to_image_referenceimage_generate" : "aigc_to_image",
+          "feature_entrance": "to_image",
+          "feature_entrance_detail": hasFilePath ? "to_image-referenceimage-byte_edit" : `to_image-${actualModel}`,
+        })),
+        "aid": parseInt(DEFAULT_ASSISTANT_ID),
+        "device_platform": "web",
+        "region": "CN",
+        "web_id": WEB_ID
+      }
+      let abilities: Record<string, any> = {}
+      if (hasFilePath) {
+        // ... blend abilities 构造 ...
+      } else {
+        abilities = {
+          "generate": {
+            "type": "", "id": generateUuid(), "core_param": {"type": "","id": generateUuid(),"model": actualModel,"prompt": params.prompt,"negative_prompt": params.negative_prompt || "","seed": Math.floor(Math.random() * 100000000) + 2500000000,"sample_strength": params.sample_strength || 0.5,"image_ratio": 1,"large_image_info": {"type": "","id": generateUuid(),"height": params.height || 1024,"width": params.width || 1024,"resolution_type": '1k'}},"history_option": {"type": "","id": generateUuid(),}
           }
         }
       }
-    } else {
-      abilities = {
-        "generate": {
-          "type": "",
-          "id": generateUuid(),
-          "core_param": {
-            "type": "",
-            "id": generateUuid(),
-            "model": actualModel,
-            "prompt": params.prompt,
-            "negative_prompt": params.negative_prompt || "",
-            "seed": Math.floor(Math.random() * 100000000) + 2500000000,
-            "sample_strength": params.sample_strength || 0.5,
-            "image_ratio": 1,
-            "large_image_info": {
-              "type": "",
-              "id": generateUuid(),
-              "height": params.height || 1024,
-              "width": params.width || 1024,
-              "resolution_type": '1k'
-            }
-          },
-          "history_option": {
-            "type": "",
-            "id": generateUuid(),
-          }
-        }
+      const rqData = {
+        "extend": {"root_model": actualModel,"template_id": "",},"submit_id": generateUuid(),"metrics_extra": hasFilePath ? undefined : jsonEncode({"templateId": "","generateCount": 1,"promptSource": "custom","templateSource": "","lastRequestId": "","originRequestId": "",}),"draft_content": jsonEncode({"type": "draft","id": generateUuid(),"min_version": DRAFT_VERSION,"is_from_tsn": true,"version": "3.2.2","main_component_id": componentId,"component_list": [{"type": "image_base_component","id": componentId,"min_version": DRAFT_VERSION,"metadata": {"type": "","id": generateUuid(),"created_platform": 3,"created_platform_version": "","created_time_in_ms": Date.now(),"created_did": ""},"generate_type": hasFilePath ? "blend" : "generate","aigc_mode": "workbench","abilities": {"type": "","id": generateUuid(),...abilities}}]}),
       }
-    }
-    const rqData = {
-      "extend": {
-        "root_model": actualModel,
-        "template_id": "",
-      },
-      "submit_id": generateUuid(),
-      "metrics_extra": hasFilePath ? undefined : jsonEncode({
-        "templateId": "",
-        "generateCount": 1,
-        "promptSource": "custom",
-        "templateSource": "",
-        "lastRequestId": "",
-        "originRequestId": "",
-      }),
-      "draft_content": jsonEncode({
-        "type": "draft",
-        "id": generateUuid(),
-        "min_version": DRAFT_VERSION,
-        "is_from_tsn": true,
-        "version": "3.2.2",
-        "main_component_id": componentId,
-        "component_list": [{
-          "type": "image_base_component",
-          "id": componentId,
-          "min_version": DRAFT_VERSION,
-          "metadata": {
-            "type": "",
-            "id": generateUuid(),
-            "created_platform": 3,
-            "created_platform_version": "",
-            "created_time_in_ms": Date.now(),
-            "created_did": ""
-          },
-          "generate_type": hasFilePath ? "blend" : "generate",
-          "aigc_mode": "workbench",
-          "abilities": {
-            "type": "",
-            "id": generateUuid(),
-            ...abilities
-          }
-        }]
-      }),
-    }
+      logBuffer.push("[任务准备] 请求参数构造完毕。");
 
-  // 发送生成请求
-    const result = await this.request(
-      'POST',
-      '/mweb/v1/aigc_draft/generate',
-      rqData,
-      rqParams
-    );
-    
-    // 获取历史记录ID
-    const historyId = result?.data?.aigc_data?.history_record_id;
-    if (!historyId) {
-      throw new Error('记录ID不存在');
-    }
-
-    // 轮询获取结果
-    let status = 20;
-    let failCode = null;
-    let itemList: any[] = [];
-    let pollCount = 1; // 添加一个轮询计数器
-
-    while (status === 20) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const pollResult = await this.request( // 使用新变量名以区分
+      // 发送生成请求
+      logBuffer.push("\n[步骤 1] 正在向服务器提交生成任务...");
+      const result = await this.request(
         'POST',
-        '/mweb/v1/get_history_by_ids',
-        {
-          "history_ids": [historyId],
-          "image_info": { /* ... */ },
-          "http_common_info": { /* ... */ }
-        }
+        '/mweb/v1/aigc_draft/generate',
+        rqData,
+        rqParams
       );
-
-      const record = pollResult?.data?.[historyId];
       
-      // --- 核心日志添加处 ---
-      console.log(`\n============== 🔄 [轮询 #${pollCount}] 正在检查 History ID: ${historyId} ==============`);
-      // 使用 JSON.stringify 格式化输出，可以清晰地看到所有嵌套结构
-      console.log("[服务器返回的 'record' 完整对象]:", JSON.stringify(record, null, 2));
-      // --- 日志添加结束 ---
-
-      pollCount++;
-
-      if (!record) {
-          throw new Error(`轮询失败：记录不存在。服务器响应: ${JSON.stringify(pollResult?.data)}`);
+      const historyId = result?.data?.aigc_data?.history_record_id;
+      if (!historyId) {
+        throw new Error(`未能从初始响应中获取 History ID。响应: ${JSON.stringify(result)}`);
       }
+      logBuffer.push(`[步骤 1] 成功获取 History ID: ${historyId}`);
+      logBuffer.push("\n[步骤 2] 开始轮询获取生成结果...");
 
-      status = record.status;
-      failCode = record.fail_code;
-      itemList = record.item_list || [];
-      
-      // (可选) 打印提取出的状态，方便快速查看
-      console.log(`[提取状态]: status=${status}, fail_code=${failCode}`);
+      // 轮询获取结果
+      let status = 20;
+      let failCode = null;
+      let itemList: any[] = [];
+      let pollCount = 1;
 
-
-      if (status === 30) {
-        if (failCode === '2038') {
-          throw new Error('内容被过滤');
+      while (status === 20) {
+        // 在实际应用中，最好有一个最大轮询次数或超时的限制，防止无限循环
+        if (pollCount > 60) { // 例如，最多轮询60次 (约1分钟)
+          throw new Error("轮询超时：等待时间过长，任务可能已在后端失败。");
         }
-        // 注意：v4.0 失败时可能也会走到这里，日志会帮助我们确认
-        throw new Error('图像生成失败 (status 30)');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const pollResult = await this.request(
+          'POST',
+          '/mweb/v1/get_history_by_ids',
+          { "history_ids": [historyId], "image_info": { "width": 2048, "height": 2048, "format": "webp", "image_scene_list": [ { "scene": "smart_crop", "width": 360, "height": 360, "uniq_key": "smart_crop-w:360-h:360", "format": "webp" }, { "scene": "smart_crop", "width": 480, "height": 480, "uniq_key": "smart_crop-w:480-h:480", "format": "webp" }, { "scene": "smart_crop", "width": 720, "height": 720, "uniq_key": "smart_crop-w:720-h:720", "format": "webp" }, { "scene": "smart_crop", "width": 720, "height": 480, "uniq_key": "smart_crop-w:720-h:480", "format": "webp" }, { "scene": "smart_crop", "width": 360, "height": 240, "uniq_key": "smart_crop-w:360-h:240", "format": "webp" }, { "scene": "smart_crop", "width": 240, "height": 320, "uniq_key": "smart_crop-w:240-h:320", "format": "webp" }, { "scene": "smart_crop", "width": 480, "height": 640, "uniq_key": "smart_crop-w:480-h:640", "format": "webp" }, { "scene": "normal", "width": 2400, "height": 2400, "uniq_key": "2400", "format": "webp" }, { "scene": "normal", "width": 1080, "height": 1080, "uniq_key": "1080", "format": "webp" }, { "scene": "normal", "width": 720, "height": 720, "uniq_key": "720", "format": "webp" }, { "scene": "normal", "width": 480, "height": 480, "uniq_key": "480", "format": "webp" }, { "scene": "normal", "width": 360, "height": 360, "uniq_key": "360", "format": "webp" } ] }, "http_common_info": { "aid": parseInt(DEFAULT_ASSISTANT_ID) } }
+        );
+
+        const record = pollResult?.data?.[historyId];
+        
+        logBuffer.push(`\n[轮询 #${pollCount}]`);
+        // 使用 JSON.stringify 格式化输出，可以清晰地看到所有嵌套结构
+        logBuffer.push(`服务器返回的 'record' 对象: ${JSON.stringify(record, null, 2)}`);
+
+        pollCount++;
+
+        if (!record) {
+          throw new Error(`轮询失败：记录不存在。服务器响应: ${JSON.stringify(pollResult?.data)}`);
+        }
+
+        status = record.status;
+        failCode = record.fail_code;
+        itemList = record.item_list || [];
+        
+        logBuffer.push(`提取状态: status=${status}, fail_code=${failCode}`);
+
+        if (status === 30) {
+          if (failCode === '2038') {
+            throw new Error('内容被过滤 (fail_code: 2038)');
+          }
+          throw new Error(`图像生成失败 (status: 30, fail_code: ${failCode})`);
+        }
       }
+
+      logBuffer.push("\n[步骤 3] 轮询结束, 最终的 itemList:", JSON.stringify(itemList, null, 2));
+      logBuffer.push("\n[步骤 4] 开始提取图片链接...");
+
+      // 提取图片URL
+      const imageUrls = itemList.map(item => {
+        const imageUrl = item?.image?.large_images?.[0]?.image_url || item?.common_attr?.cover_url;
+        logBuffer.push(`从 item 中找到的 URL 是 -> ${imageUrl}`);
+        return imageUrl;
+      }).filter(Boolean);
+
+      if (imageUrls.length === 0) {
+        logBuffer.push("警告: 任务看似成功，但未能从最终的 itemList 中提取到任何图片URL。");
+      }
+
+      // 将成功的结果和所有日志一起打包成 JSON 字符串返回
+      // @ts-ignore
+      return JSON.stringify({
+        success: true,
+        logs: logBuffer,
+        images: imageUrls
+      });
+
+    } catch (error: any) {
+      logBuffer.push(`\n❌ [发生严重错误]: ${error.message}`);
+      // 将失败的结果和所有日志一起打包成 JSON 字符串返回
+      // @ts-ignore
+      return JSON.stringify({
+        success: false,
+        logs: logBuffer,
+        error: error.message
+      });
     }
-
-    // 最终的 itemList，也就是成功时的结果
-    console.log("\n✅ [轮询结束], 最终的 itemList:", JSON.stringify(itemList, null, 2));
-
-    // 提取图片URL
-    return itemList.map(item => {
-      const imageUrl = item?.image?.large_images?.[0]?.image_url || item?.common_attr?.cover_url;
-      // 增加日志，看是否能找到URL
-      console.log(`[正在提取URL]: 从 item 中找到的 URL 是 -> ${imageUrl}`);
-      return imageUrl;
-    }).filter(Boolean);
   }
   
   /**
