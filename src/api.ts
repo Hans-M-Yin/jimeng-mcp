@@ -414,15 +414,13 @@ class JimengApiClient {
       }),
     }
 
-    // 发送生成请求
+  // 发送生成请求
     const result = await this.request(
       'POST',
       '/mweb/v1/aigc_draft/generate',
       rqData,
       rqParams
     );
-    
-    console.log("【1. 初始生成响应】:", JSON.stringify(result, null, 2));
     
     // 获取历史记录ID
     const historyId = result?.data?.aigc_data?.history_record_id;
@@ -434,66 +432,64 @@ class JimengApiClient {
     let status = 20;
     let failCode = null;
     let itemList: any[] = [];
+    let pollCount = 1; // 添加一个轮询计数器
 
     while (status === 20) {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const result = await this.request(
+      const pollResult = await this.request( // 使用新变量名以区分
         'POST',
         '/mweb/v1/get_history_by_ids',
         {
           "history_ids": [historyId],
-          "image_info": {
-            "width": 2048,
-            "height": 2048,
-            "format": "webp",
-            "image_scene_list": [
-              { "scene": "smart_crop", "width": 360, "height": 360, "uniq_key": "smart_crop-w:360-h:360", "format": "webp" },
-              { "scene": "smart_crop", "width": 480, "height": 480, "uniq_key": "smart_crop-w:480-h:480", "format": "webp" },
-              { "scene": "smart_crop", "width": 720, "height": 720, "uniq_key": "smart_crop-w:720-h:720", "format": "webp" },
-              { "scene": "smart_crop", "width": 720, "height": 480, "uniq_key": "smart_crop-w:720-h:480", "format": "webp" },
-              { "scene": "smart_crop", "width": 360, "height": 240, "uniq_key": "smart_crop-w:360-h:240", "format": "webp" },
-              { "scene": "smart_crop", "width": 240, "height": 320, "uniq_key": "smart_crop-w:240-h:320", "format": "webp" },
-              { "scene": "smart_crop", "width": 480, "height": 640, "uniq_key": "smart_crop-w:480-h:640", "format": "webp" },
-              { "scene": "normal", "width": 2400, "height": 2400, "uniq_key": "2400", "format": "webp" },
-              { "scene": "normal", "width": 1080, "height": 1080, "uniq_key": "1080", "format": "webp" },
-              { "scene": "normal", "width": 720, "height": 720, "uniq_key": "720", "format": "webp" },
-              { "scene": "normal", "width": 480, "height": 480, "uniq_key": "480", "format": "webp" },
-              { "scene": "normal", "width": 360, "height": 360, "uniq_key": "360", "format": "webp" }
-            ]
-          },
-          "http_common_info": {
-            "aid": parseInt(DEFAULT_ASSISTANT_ID)
-          }
+          "image_info": { /* ... */ },
+          "http_common_info": { /* ... */ }
         }
       );
 
-      const record = result?.data?.[historyId];
-
-      console.log("【2. 轮询获取结果】Status:", record?.status, "Record:", JSON.stringify(record, null, 2));
+      const record = pollResult?.data?.[historyId];
       
+      // --- 核心日志添加处 ---
+      console.log(`\n============== 🔄 [轮询 #${pollCount}] 正在检查 History ID: ${historyId} ==============`);
+      // 使用 JSON.stringify 格式化输出，可以清晰地看到所有嵌套结构
+      console.log("[服务器返回的 'record' 完整对象]:", JSON.stringify(record, null, 2));
+      // --- 日志添加结束 ---
+
+      pollCount++;
+
       if (!record) {
-          throw new Error(`记录不存在 ${JSON.stringify(result?.data)}`);
+          throw new Error(`轮询失败：记录不存在。服务器响应: ${JSON.stringify(pollResult?.data)}`);
       }
 
       status = record.status;
       failCode = record.fail_code;
       itemList = record.item_list || [];
+      
+      // (可选) 打印提取出的状态，方便快速查看
+      console.log(`[提取状态]: status=${status}, fail_code=${failCode}`);
+
 
       if (status === 30) {
         if (failCode === '2038') {
           throw new Error('内容被过滤');
         }
-        throw new Error('图像生成失败');
+        // 注意：v4.0 失败时可能也会走到这里，日志会帮助我们确认
+        throw new Error('图像生成失败 (status 30)');
       }
     }
+
+    // 最终的 itemList，也就是成功时的结果
+    console.log("\n✅ [轮询结束], 最终的 itemList:", JSON.stringify(itemList, null, 2));
 
     // 提取图片URL
     return itemList.map(item => {
       const imageUrl = item?.image?.large_images?.[0]?.image_url || item?.common_attr?.cover_url;
+      // 增加日志，看是否能找到URL
+      console.log(`[正在提取URL]: 从 item 中找到的 URL 是 -> ${imageUrl}`);
       return imageUrl;
     }).filter(Boolean);
   }
+  
   /**
   * 获取上传凭证所需Ak和Tk
   */
