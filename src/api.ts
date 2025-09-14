@@ -237,7 +237,7 @@ class JimengApiClient {
   }
 
   /**
-   * 即梦AI图像生成 (版本已修改，会返回包含日志的JSON字符串)
+   * 即梦AI图像生成 (最终修正版: 支持 v4.0 的 status 42)
    * @param params 图像生成参数
    * @returns 包含日志、状态和结果的JSON字符串
    */
@@ -272,7 +272,7 @@ class JimengApiClient {
         logBuffer.push("[任务准备] 每日积分领取成功。");
       }
 
-      // 构造请求体和参数 (这部分逻辑保持不变)
+      // 构造请求体和参数
       const componentId = generateUuid();
       const rqParams = {
         "babi_param": urlEncode(jsonEncode({
@@ -288,7 +288,7 @@ class JimengApiClient {
       }
       let abilities: Record<string, any> = {}
       if (hasFilePath) {
-        // ... blend abilities 构造 ...
+        // (此处省略了 blend 模式的 abilities 构造，因为它与问题无关且非常长)
       } else {
         abilities = {
           "generate": {
@@ -303,12 +303,7 @@ class JimengApiClient {
 
       // 发送生成请求
       logBuffer.push("\n[步骤 1] 正在向服务器提交生成任务...");
-      const result = await this.request(
-        'POST',
-        '/mweb/v1/aigc_draft/generate',
-        rqData,
-        rqParams
-      );
+      const result = await this.request('POST', '/mweb/v1/aigc_draft/generate', rqData, rqParams);
       
       const historyId = result?.data?.aigc_data?.history_record_id;
       if (!historyId) {
@@ -323,9 +318,11 @@ class JimengApiClient {
       let itemList: any[] = [];
       let pollCount = 1;
 
-      while (status === 20) {
-        // 在实际应用中，最好有一个最大轮询次数或超时的限制，防止无限循环
-        if (pollCount > 60) { // 例如，最多轮询60次 (约1分钟)
+      // ======================= 核心修改处 =======================
+      // 当状态是 "处理中" (20) 或 "排队中" (42) 时，都继续轮询
+      while (status === 20 || status === 42) {
+      // ==========================================================
+        if (pollCount > 60) { // 设置一个超时，防止无限循环
           throw new Error("轮询超时：等待时间过长，任务可能已在后端失败。");
         }
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -335,13 +332,10 @@ class JimengApiClient {
           '/mweb/v1/get_history_by_ids',
           { "history_ids": [historyId], "image_info": { "width": 2048, "height": 2048, "format": "webp", "image_scene_list": [ { "scene": "smart_crop", "width": 360, "height": 360, "uniq_key": "smart_crop-w:360-h:360", "format": "webp" }, { "scene": "smart_crop", "width": 480, "height": 480, "uniq_key": "smart_crop-w:480-h:480", "format": "webp" }, { "scene": "smart_crop", "width": 720, "height": 720, "uniq_key": "smart_crop-w:720-h:720", "format": "webp" }, { "scene": "smart_crop", "width": 720, "height": 480, "uniq_key": "smart_crop-w:720-h:480", "format": "webp" }, { "scene": "smart_crop", "width": 360, "height": 240, "uniq_key": "smart_crop-w:360-h:240", "format": "webp" }, { "scene": "smart_crop", "width": 240, "height": 320, "uniq_key": "smart_crop-w:240-h:320", "format": "webp" }, { "scene": "smart_crop", "width": 480, "height": 640, "uniq_key": "smart_crop-w:480-h:640", "format": "webp" }, { "scene": "normal", "width": 2400, "height": 2400, "uniq_key": "2400", "format": "webp" }, { "scene": "normal", "width": 1080, "height": 1080, "uniq_key": "1080", "format": "webp" }, { "scene": "normal", "width": 720, "height": 720, "uniq_key": "720", "format": "webp" }, { "scene": "normal", "width": 480, "height": 480, "uniq_key": "480", "format": "webp" }, { "scene": "normal", "width": 360, "height": 360, "uniq_key": "360", "format": "webp" } ] }, "http_common_info": { "aid": parseInt(DEFAULT_ASSISTANT_ID) } }
         );
-
         const record = pollResult?.data?.[historyId];
         
         logBuffer.push(`\n[轮询 #${pollCount}]`);
-        // 使用 JSON.stringify 格式化输出，可以清晰地看到所有嵌套结构
         logBuffer.push(`服务器返回的 'record' 对象: ${JSON.stringify(record, null, 2)}`);
-
         pollCount++;
 
         if (!record) {
@@ -365,18 +359,21 @@ class JimengApiClient {
       logBuffer.push("\n[步骤 3] 轮询结束, 最终的 itemList:", JSON.stringify(itemList, null, 2));
       logBuffer.push("\n[步骤 4] 开始提取图片链接...");
 
-      // 提取图片URL
       const imageUrls = itemList.map(item => {
         const imageUrl = item?.image?.large_images?.[0]?.image_url || item?.common_attr?.cover_url;
         logBuffer.push(`从 item 中找到的 URL 是 -> ${imageUrl}`);
         return imageUrl;
       }).filter(Boolean);
 
+      // 增加一个健壮性检查
       if (imageUrls.length === 0) {
-        logBuffer.push("警告: 任务看似成功，但未能从最终的 itemList 中提取到任何图片URL。");
+        // 如果最终状态不是成功状态码(50), 就抛出错误
+        if (status !== 50) {
+          throw new Error(`任务以未知的最终状态 ${status} 结束，并且未能提取到图片URL。`);
+        }
+        logBuffer.push("警告: 任务看似成功(status:50)，但未能从最终的 itemList 中提取到任何图片URL。");
       }
-
-      // 将成功的结果和所有日志一起打包成 JSON 字符串返回
+      
       // @ts-ignore
       return JSON.stringify({
         success: true,
@@ -386,7 +383,6 @@ class JimengApiClient {
 
     } catch (error: any) {
       logBuffer.push(`\n❌ [发生严重错误]: ${error.message}`);
-      // 将失败的结果和所有日志一起打包成 JSON 字符串返回
       // @ts-ignore
       return JSON.stringify({
         success: false,
