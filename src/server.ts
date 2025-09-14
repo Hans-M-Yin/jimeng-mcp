@@ -31,7 +31,7 @@ export const createServer = (): McpServer => {
     {
       filePath: z.string().optional().describe("本地图片路径或图片URL（可选，若填写则为图片混合/参考图生成功能）"),
       prompt: z.string().describe("生成图像的文本描述"),
-      model: z.string().optional().describe("模型名称，可选值: jimeng-3.0, jimeng-2.1, jimeng-2.0-pro, jimeng-2.0, jimeng-1.4, jimeng-xl-pro"),
+      model: z.string().optional().describe("模型名称，可选值: jimeng-4.0, jimeng-3.0, jimeng-2.1, jimeng-2.0-pro, jimeng-2.0, jimeng-1.4, jimeng-xl-pro"),
       width: z.number().optional().default(1024).describe("图像宽度，默认值：1024"),
       height: z.number().optional().default(1024).describe("图像高度，默认值：1024"),
       sample_strength: z.number().optional().default(0.5).describe("精细度，默认值：0.5，范围0-1"),
