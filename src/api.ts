@@ -392,6 +392,9 @@ class JimengApiClient {
       rqData,
       rqParams
     );
+    
+    console.log("【1. 初始生成响应】:", JSON.stringify(result, null, 2));
+    
     // 获取历史记录ID
     const historyId = result?.data?.aigc_data?.history_record_id;
     if (!historyId) {
@@ -437,6 +440,9 @@ class JimengApiClient {
       );
 
       const record = result?.data?.[historyId];
+
+      console.log("【2. 轮询获取结果】Status:", record?.status, "Record:", JSON.stringify(record, null, 2));
+      
       if (!record) {
           throw new Error(`记录不存在 ${JSON.stringify(result?.data)}`);
       }
