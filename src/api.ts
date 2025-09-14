@@ -148,6 +148,24 @@ class JimengApiClient {
       'Cookie': generateCookie(this.refreshToken),
       ...headers
     };
+
+    // --- 开始日志打印 ---
+
+    console.log("================ ✨ 即梦API请求开始 ✨ ================");
+    console.log(`[请求方法]: ${method.toUpperCase()}`);
+    console.log(`[请求 URL]: ${url}`);
+    
+    // 为了日志清晰，只打印有内容的参数
+    if (Object.keys(params).length > 0) {
+      console.log("[请求参数 (Query Params)]:", params);
+    }
+    if (Object.keys(data).length > 0) {
+        // 对于复杂的请求体，使用JSON.stringify(data, null, 2)可以格式化输出，更易读
+        console.log("[请求体 (Body)]:", data); 
+    }
+    // 请求头内容较多，可以根据需要决定是否打印
+    // console.log("[请求头 (Headers)]:", requestHeaders);
+
     try {
       const response = await axios({
         method: method.toLowerCase(),
@@ -157,12 +175,23 @@ class JimengApiClient {
         headers: requestHeaders
       });
 
+      // 打印成功的响应
+      console.log("\n✅ [请求成功]");
+      console.log("[响应数据]:", response.data);
+      console.log("================ 🚀 即梦API请求结束 🚀 ================\n");
 
       return response.data;
     } catch (error) {
+      // 打印失败的响应
+      console.error("\n❌ [请求失败]");
       if (axios.isAxiosError(error) && error.response) {
+        console.error(`[错误状态码]: ${error.response.status}`);
+        console.error("[错误响应体]:", error.response.data);
+        console.log("================ 💀 即梦API请求结束 💀 ================\n");
         throw new Error(`即梦API请求错误: ${JSON.stringify(error.response.data)}`);
       } else {
+        console.error("[未知错误详情]:", error);
+        console.log("================ 💀 即梦API请求结束 💀 ================\n");
         throw new Error(`即梦API请求失败: ${error}`);
       }
     }
